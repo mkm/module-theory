@@ -13,9 +13,9 @@ data Space :: Type where
     -- | Scalars.
     R :: Space
     -- | Coproduct.
-    Copi :: Type -> Space -> Space
+    Copow :: Type -> Space -> Space
     -- | Product.
-    Pi :: b -> Space -> Space
+    Pow :: Type -> Space -> Space
     -- | Direct sum.
     (:+:) :: Space -> Space -> Space
     -- | Tensor product.
@@ -29,8 +29,9 @@ infixr 6 :+:
 infixr 7 :*:
 infixr 1 :->
 
--- | A free module over 'b' is just a coproduct of 'b' copies of 'R'
-type Free b = Copi b R
--- | A cofree module over 'b' is just a product of 'b' copies of 'R'
-type Cofree b = Pi b R
+-- | A free module over 'b' is just a copower of 'b' copies of 'R'.
+type Free b = Copow b R
+-- | A cofree module over 'b' is just a power of 'b' copies of 'R'.
+type Cofree b = Pow b R
+-- | The dual of a module consists of scalar valued maps out of the module.
 type Dual v = v :-> R

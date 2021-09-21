@@ -6,45 +6,24 @@ module ModuleTheory.Vector (
         zero,
         (.+.),
         (*.),
+        (.*),
         (.*.),
         tensor3,
         mkScalar,
-        one,
         getScalar,
         mul,
         mul3,
-        scalarH,
-        sumH,
-        tensorH,
-        idH,
-        (#),
-        appH,
-        addH,
-        addManyH,
-        mulH,
-        parH,
-        kroneckerH,
-        swapH,
-        fanoutH,
-        fanoutPiCopiH,
-        --freeTensorH,
-        --freeTensorInvH,
-        composeHomCopiH,
-        curryCopiH,
         sum,
         linear,
         bilinear,
-        kronecker,
-        tassocLtr,
-        tassocRtl,
         decomposeSum,
         decomposeTensor,
         tensorExt,
         extTensor,
         extTensor3,
-        appPi,
-        mapCopi,
-        hmapCopi,
+        appPow,
+        mapCopow,
+        hmapCopow,
         collect,
         collect2,
         collect3,
@@ -53,7 +32,7 @@ module ModuleTheory.Vector (
         collect6,
         FirstOrder(..),
         ShowVec(..),
-        curryCopiProd,
+        curryCopowProd,
     ) where
 
 import Prelude hiding (sum)
@@ -74,21 +53,21 @@ data Vec r v = Zero | Add (Vec r v) (Vec r v) | Mul r (Vec r v) | Gen (Gen r v)
 
 data family Gen r (v :: Space) :: Type
 
-newtype instance Gen r R = Scalar r
+data instance Gen r R = Scalar
 
-newtype instance Gen r (Copi () v) = CopiUnit { fromCopiUnit :: Vec r v }
+newtype instance Gen r (Copow () v) = CopowUnit { fromCopowUnit :: Vec r v }
 
-newtype instance Gen r (Copi Int v) = CopiInt { fromCopiInt :: IntMap (Vec r v) }
+newtype instance Gen r (Copow Int v) = CopowInt { fromCopowInt :: IntMap (Vec r v) }
 
-newtype instance Gen r (Copi Char v) = CopiChar { fromCopiChar :: IntMap (Vec r v) }
+newtype instance Gen r (Copow Char v) = CopowChar { fromCopowChar :: IntMap (Vec r v) }
 
-data instance Gen r (Copi (Either b c) v) = CopiSum (Vec r (Copi b v)) (Vec r (Copi c v))
+data instance Gen r (Copow (Either b c) v) = CopowSum (Vec r (Copow b v)) (Vec r (Copow c v))
 
-newtype instance Gen r (Copi (b, c) v) = CopiProd (Vec r (Copi b (Copi c v)))
+newtype instance Gen r (Copow (b, c) v) = CopowProd (Vec r (Copow b (Copow c v)))
 
-data instance Gen r (Copi [b] v) = CopiPoly (Vec r v) (Vec r (Copi b (Copi [b] v)))
+data instance Gen r (Copow [b] v) = CopowPoly (Vec r v) (Vec r (Copow b (Copow [b] v)))
 
-newtype instance Gen r (Pi b v) = PiExt { fromPi :: b -> Vec r v }
+newtype instance Gen r (Pow b v) = PowExt { fromPow :: b -> Vec r v }
 
 data instance Gen r (u :+: v) = DirectSum (Vec r u) (Vec r v)
 
@@ -96,27 +75,7 @@ data instance Gen r (u :*: v) = Tensor (Vec r u) (Vec r v)
 
 data instance Gen r (Poly v) = ConstPoly (Vec r R) | InjPoly (Vec r v) | MulPoly (Vec r (Poly v)) (Vec r (Poly v))
 
-data instance Gen r (u :-> v) where
-    PiH :: Vec r (Copi b (u :-> v)) -> Gen r (Pi b u :-> v)
-    CopiH :: (FirstOrder b) => Vec r (Pi b (u :-> v)) -> Gen r (Copi b u :-> v)
-    ScalarH :: Vec r v -> Gen r (R :-> v)
-    SumH :: Vec r (u :-> w) -> Vec r (v :-> w) -> Gen r (u :+: v :-> w)
-    TensorH :: Vec r (u :-> v :-> w) -> Gen r (u :*: v :-> w)
-    IdH :: Gen r (v :-> v)
-    ComposeH :: Vec r (v :-> w) -> Vec r (u :-> v) -> Gen r (u :-> w)
-    AppH :: Vec r (u :*: v :-> w) -> Vec r u -> Gen r (v :-> w)
-    AddH :: Gen r (v :+: v :-> v)
-    AddManyH :: (FirstOrder b) => Gen r (Copi b v :-> v)
-    MulH :: Gen r (R :*: v :-> v)
-    ParH :: Vec r (u1 :-> v1) -> Vec r (u2 :-> v2) -> Gen r (u1 :+: u2 :-> v1 :+: v2)
-    KroneckerH :: Vec r (u1 :-> v1) -> Vec r (u2 :-> v2) -> Gen r (u1 :*: u2 :-> v1 :*: v2)
-    SwapH :: Gen r (u :*: v :-> v :*: u)
-    FanoutH :: (FirstOrder b) => Gen r (Copi b u :*: Copi b v :-> Copi b (u :*: v))
-    FanoutPiCopiH :: (FirstOrder b) => Gen r (Pi b u :*: Copi b v :-> Copi b (u :*: v))
-    FreeTensorH :: (FirstOrder b, FirstOrder c) => Gen r (Free b :*: Free c :-> Free (b, c))
-    FreeTensorInvH :: (FirstOrder b, FirstOrder c) => Gen r (Free (b, c) :-> Free b :*: Free c)
-    ComposeHomCopiH :: (FirstOrder b) => Gen r ((u :-> v) :*: Copi b u :-> Copi b v)
-    CurryCopiH :: Gen r (Copi (b, c) v :-> Copi b (Copi c v))
+newtype instance Gen r (u :-> v) = Hom (Vec r u -> Vec r v)
 
 zero :: Vec r v
 zero = Zero
@@ -134,7 +93,15 @@ r *. x = Mul r x
 
 infix 8 *.
 
+(.*) :: Vec r v -> r -> Vec r v
+Zero .* _ = Zero
+x .* r = Mul r x
+
+infix 8 .*
+
 (.*.) :: Vec r u -> Vec r v -> Vec r (u :*: v)
+Zero .*. _ = Zero
+_ .*. Zero = Zero
 x .*. y = Gen $ Tensor x y
 
 infixr 8 .*.
@@ -144,76 +111,20 @@ tensor3 x y z = x .*. y .*. z
 
 mkScalar :: (Ring r) => r -> Vec r R
 mkScalar 0 = Zero
-mkScalar x = Gen (Scalar x)
-
-one :: (Ring r) => Vec r R
-one = mkScalar 1
+mkScalar 1 = Gen Scalar
+mkScalar r = Mul r (Gen Scalar)
 
 getScalar :: (Ring r) => Vec r R -> r
 getScalar Zero = 0
 getScalar (Add x y) = getScalar x + getScalar y
 getScalar (Mul r x) = r * getScalar x
-getScalar (Gen (Scalar r)) = r
+getScalar (Gen Scalar) = 1
 
 mul :: (Ring r) => Vec r (R :*: R) -> Vec r R
 mul = tensorExt (*)
 
 mul3 :: (Ring r) => Vec r (R :*: R :*: R) -> Vec r R
 mul3 = tensorExt $ \x -> tensorExt $ \y z -> x * y * z
-
-scalarH :: Vec r v -> Vec r (R :-> v)
-scalarH x = Gen $ ScalarH x
-
-sumH :: Vec r (u :-> w) -> Vec r (v :-> w) -> Vec r (u :+: v :-> w)
-sumH f g = Gen $ SumH f g
-
-tensorH :: Vec r (u :-> v :-> w) -> Vec r (u :*: v :-> w)
-tensorH f = Gen $ TensorH f
-    
-idH :: Vec r (v :-> v)
-idH = Gen IdH
-
-(#) :: Vec r (v :-> w) -> Vec r (u :-> v) -> Vec r (u :-> w)
-f # g = Gen $ ComposeH f g
-
-appH :: Vec r (u :*: v :-> w) -> Vec r u -> Vec r (v :-> w)
-appH f x = Gen $ AppH f x
-
-addH :: Vec r (v :+: v :-> v)
-addH = Gen AddH
-
-addManyH :: (FirstOrder b) => Vec r (Copi b v :-> v)
-addManyH = Gen AddManyH
-
-mulH :: Vec r (R :*: v :-> v)
-mulH = Gen MulH
-
-parH :: Vec r (u1 :-> v1) -> Vec r (u2 :-> v2) -> Vec r (u1 :+: u2 :-> v1 :+: v2)
-parH f g = Gen $ ParH f g
-
-kroneckerH :: Vec r (u1 :-> v1) -> Vec r (u2 :-> v2) -> Vec r (u1 :*: u2 :-> v1 :*: v2)
-kroneckerH f g = Gen $ KroneckerH f g
-
-swapH :: Vec r (u :*: v :-> v :*: u)
-swapH = Gen SwapH
-
-fanoutH :: (FirstOrder b) => Vec r (Copi b u :*: Copi b v :-> Copi b (u :*: v))
-fanoutH = Gen FanoutH
-
-fanoutPiCopiH :: (FirstOrder b) => Vec r (Pi b u :*: Copi b v :-> Copi b (u :*: v))
-fanoutPiCopiH = Gen FanoutPiCopiH
-
-freeTensorH :: (FirstOrder b, FirstOrder c) => Vec r (Free b :*: Free c :-> Free (b, c))
-freeTensorH = Gen FreeTensorH
-
-freeTensorInvH :: (FirstOrder b, FirstOrder c) => Vec r (Free (b, c) :-> Free b :*: Free c)
-freeTensorInvH = Gen FreeTensorInvH
-
-composeHomCopiH :: (FirstOrder b) => Vec r ((u :-> v) :*: Copi b u :-> Copi b v)
-composeHomCopiH = Gen ComposeHomCopiH
-
-curryCopiH :: Vec r (Copi (b, c) v :-> Copi b (Copi c v))
-curryCopiH = Gen CurryCopiH
 
 sum :: [Vec r v] -> Vec r v
 sum = foldr (.+.) zero
@@ -226,15 +137,6 @@ linear f (Gen x) = f x
 
 bilinear :: (Gen r u -> Gen r v -> Vec r w) -> Vec r u -> Vec r v -> Vec r w
 bilinear f x y = linear (\x' -> linear (\y' -> f x' y') y) x
-
-kronecker :: (Ring r) => (Vec r u -> Vec r u') -> (Vec r v -> Vec r v') -> Vec r (u :*: v) -> Vec r (u' :*: v')
-kronecker f g = tensorExt $ \x y -> f x .*. g y
-
-tassocLtr :: (Ring r) => Vec r ((u :*: v) :*: w) -> Vec r (u :*: (v :*: w))
-tassocLtr = tensorExt . flip $ \z -> tensorExt $ \x y -> x .*. (y .*. z)
-
-tassocRtl :: (Ring r) => Vec r (u :*: (v :*: w)) -> Vec r ((u :*: v) :*: w)
-tassocRtl = tensorExt $ \x -> tensorExt $ \y z -> (x .*. y) .*. z
 
 isNominallyZero :: Vec r v -> Bool
 isNominallyZero Zero = True
@@ -276,11 +178,11 @@ extTensor = flip tensorExt
 extTensor3 :: (Ring r) => Vec r (u1 :*: u2 :*: u3) -> (Vec r u1 -> Vec r u2 -> Vec r u3 -> Vec r v) -> Vec r v
 extTensor3 x f = extTensor x $ \x1 -> tensorExt $ \x2 x3 -> f x1 x2 x3
 
-appPi :: Vec r (Pi a u) -> a -> Vec r u
-appPi Zero = const Zero
-appPi (Add x y) = \a -> Add (appPi x a) (appPi y a)
-appPi (Mul r x) = \a -> Mul r (appPi x a)
-appPi (Gen x) = fromPi x
+appPow :: Vec r (Pow a u) -> a -> Vec r u
+appPow Zero = const Zero
+appPow (Add x y) = \a -> Add (appPow x a) (appPow y a)
+appPow (Mul r x) = \a -> Mul r (appPow x a)
+appPow (Gen x) = fromPow x
 
 instance Ring r => Num (Vec r R) where
     x + y = mkScalar $ getScalar x + getScalar y
@@ -290,149 +192,157 @@ instance Ring r => Num (Vec r R) where
     signum x = mkScalar $ signum (getScalar x)
     fromInteger x = mkScalar $ fromInteger x
 
+-- | A type is first-order if it can be used efficiently as the index of a copower. 
 class Eq b => FirstOrder b where
-    inj :: b -> Vec r v -> Vec r (Copi b v)
-    mapCopiGen :: (Ring r) => (b -> Vec r u -> Vec r v) -> Gen r (Copi b u) -> Vec r (Copi b v)
-    collectGen :: (Ring r) => Gen r (Copi b v) -> Vec r v
-    intersect :: (Ring r) => (b -> Vec r u -> Vec r v -> Vec r w) -> Vec r (Copi b u) -> Vec r (Copi b v) -> Vec r (Copi b w)
-    decomposeCoprod :: (Ring r) => Vec r (Copi b v) -> [(b, Vec r v)]
+    -- | Singleton mapping.
+    inj :: b -> Vec r v -> Vec r (Copow b v)
+    -- | Transform a copower generator by specifying what happens to 'inj b v'.
+    mapCopowGen :: (Ring r) => (b -> Vec r u -> Vec r v) -> Gen r (Copow b u) -> Vec r (Copow b v)
+    -- | Sum of the mappings contained in a copower generator.
+    collectGen :: (Ring r) => Gen r (Copow b v) -> Vec r v
+    -- | Intersection of two copowers.
+    intersect :: (Ring r) => (b -> Vec r u -> Vec r v -> Vec r w) -> Vec r (Copow b u) -> Vec r (Copow b v) -> Vec r (Copow b w)
+    -- | Compute a list of mappings contained in a copower.
+    decomposeCoprod :: (Ring r) => Vec r (Copow b v) -> [(b, Vec r v)]
 
-mapCopi :: (Ring r, FirstOrder b) => (b -> Vec r u -> Vec r v) -> Vec r (Copi b u) -> Vec r (Copi b v)
-mapCopi = linear . mapCopiGen
+-- | Transform a copower by specifying what happens to 'inj b v'.
+mapCopow :: (Ring r, FirstOrder b) => (b -> Vec r u -> Vec r v) -> Vec r (Copow b u) -> Vec r (Copow b v)
+mapCopow = linear . mapCopowGen
 
-hmapCopi :: (Ring r, FirstOrder b) => (Vec r u -> Vec r v) -> Vec r (Copi b u) -> Vec r (Copi b v)
-hmapCopi f = mapCopi (const f)
+-- | Transform a copower by specifying what happens to 'inj b v' independent of 'b'.
+hmapCopow :: (Ring r, FirstOrder b) => (Vec r u -> Vec r v) -> Vec r (Copow b u) -> Vec r (Copow b v)
+hmapCopow f = mapCopow (const f)
 
+-- | Sum of the mappings contained in a copower.
 collect :: (Ring r, FirstOrder b)
-    => Vec r (Copi b v) -> Vec r v
+    => Vec r (Copow b v) -> Vec r v
 collect = linear collectGen
 
+-- | Sum of the mappings contained in a nested copower.
 collect2 :: (Ring r, FirstOrder a, FirstOrder b)
-    => Vec r (Copi a (Copi b v)) -> Vec r v
+    => Vec r (Copow a (Copow b v)) -> Vec r v
 collect2 = collect . collect
 
+-- | Sum of the mappings contained in a nested copower.
 collect3 :: (Ring r, FirstOrder a, FirstOrder b, FirstOrder c)
-    => Vec r (Copi a (Copi b (Copi c v))) -> Vec r v
+    => Vec r (Copow a (Copow b (Copow c v))) -> Vec r v
 collect3 = collect . collect . collect
 
+-- | Sum of the mappings contained in a nested copower.
 collect4 :: (Ring r, FirstOrder a, FirstOrder b, FirstOrder c, FirstOrder d)
-    => Vec r (Copi a (Copi b (Copi c (Copi d v)))) -> Vec r v
+    => Vec r (Copow a (Copow b (Copow c (Copow d v)))) -> Vec r v
 collect4 = collect . collect . collect . collect
 
+-- | Sum of the mappings contained in a nested copower.
 collect5 :: (Ring r, FirstOrder a, FirstOrder b, FirstOrder c, FirstOrder d, FirstOrder e) =>
-    Vec r (Copi a (Copi b (Copi c (Copi d (Copi e v))))) -> Vec r v
+    Vec r (Copow a (Copow b (Copow c (Copow d (Copow e v))))) -> Vec r v
 collect5 = collect . collect . collect . collect . collect
 
+-- | Sum of the mappings contained in a nested copower.
 collect6 :: (Ring r, FirstOrder a, FirstOrder b, FirstOrder c, FirstOrder d, FirstOrder e, FirstOrder f) =>
-    Vec r (Copi a (Copi b (Copi c (Copi d (Copi e (Copi f v)))))) -> Vec r v
+    Vec r (Copow a (Copow b (Copow c (Copow d (Copow e (Copow f v)))))) -> Vec r v
 collect6 = collect . collect . collect . collect . collect . collect
 
-bind :: (Gen r u -> Vec r v) -> (Vec r u -> Vec r v)
-bind _ Zero = Zero
-bind f (Add x y) = bind f x .+. bind f y
-bind f (Mul r x) = r *. bind f x
-bind f (Gen x) = f x
-
 instance FirstOrder () where
-    inj () x = Gen $ CopiUnit x
-    mapCopiGen f (CopiUnit x) = Gen $ CopiUnit (f () x)
-    collectGen (CopiUnit x) = x
-    intersect f x y = Gen . CopiUnit $ f () (bind fromCopiUnit x) (bind fromCopiUnit y)
-    decomposeCoprod x = [((), y) | let y = bind fromCopiUnit x, not (isNominallyZero y)]
+    inj () x = Gen $ CopowUnit x
+    mapCopowGen f (CopowUnit x) = Gen $ CopowUnit (f () x)
+    collectGen (CopowUnit x) = x
+    intersect f x y = Gen . CopowUnit $ f () (linear fromCopowUnit x) (linear fromCopowUnit y)
+    decomposeCoprod x = [((), y) | let y = linear fromCopowUnit x, not (isNominallyZero y)]
 
-canonicalCopiInt :: (Ring r) => r -> Vec r (Copi Int v) -> Gen r (Copi Int v)
-canonicalCopiInt r Zero = CopiInt M.empty
-canonicalCopiInt r (Add x y) = CopiInt $ M.unionWith (.+.) (fromCopiInt $ canonicalCopiInt r x) (fromCopiInt $ canonicalCopiInt r y)
-canonicalCopiInt r (Mul r' x) = canonicalCopiInt (r * r') x
-canonicalCopiInt 1 (Gen x) = x
-canonicalCopiInt r (Gen x) = CopiInt $ M.map (r *.) (fromCopiInt x)
+canonicalCopowInt :: (Ring r) => r -> Vec r (Copow Int v) -> Gen r (Copow Int v)
+canonicalCopowInt r Zero = CopowInt M.empty
+canonicalCopowInt r (Add x y) = CopowInt $ M.unionWith (.+.) (fromCopowInt $ canonicalCopowInt r x) (fromCopowInt $ canonicalCopowInt r y)
+canonicalCopowInt r (Mul r' x) = canonicalCopowInt (r * r') x
+canonicalCopowInt 1 (Gen x) = x
+canonicalCopowInt r (Gen x) = CopowInt $ M.map (r *.) (fromCopowInt x)
 
 instance FirstOrder Int where
-    inj b x = Gen . CopiInt $ M.singleton b x
-    mapCopiGen f (CopiInt m) = Gen . CopiInt $ M.mapMaybeWithKey (\b -> zeroToNothing . f b) m
-    collectGen (CopiInt m) = sum $ M.elems m
-    intersect f x y = Gen . CopiInt $ M.intersectionWithKey f (fromCopiInt $ canonicalCopiInt 1 x) (fromCopiInt $ canonicalCopiInt 1 y)
-    decomposeCoprod = M.toList . fromCopiInt . canonicalCopiInt 1
+    inj b x = Gen . CopowInt $ M.singleton b x
+    mapCopowGen f (CopowInt m) = Gen . CopowInt $ M.mapMaybeWithKey (\b -> zeroToNothing . f b) m
+    collectGen (CopowInt m) = sum $ M.elems m
+    intersect f x y = Gen . CopowInt $ M.intersectionWithKey f (fromCopowInt $ canonicalCopowInt 1 x) (fromCopowInt $ canonicalCopowInt 1 y)
+    decomposeCoprod = M.toList . fromCopowInt . canonicalCopowInt 1
 
-canonicalCopiChar :: (Ring r) => r -> Vec r (Copi Char v) -> Gen r (Copi Char v)
-canonicalCopiChar r Zero = CopiChar M.empty
-canonicalCopiChar r (Add x y) = CopiChar $ M.unionWith (.+.) (fromCopiChar $ canonicalCopiChar r x) (fromCopiChar $ canonicalCopiChar r y)
-canonicalCopiChar r (Mul r' x) = canonicalCopiChar (r * r') x
-canonicalCopiChar 1 (Gen x) = x
-canonicalCopiChar r (Gen x) = CopiChar $ M.map (r *.) (fromCopiChar x)
+canonicalCopowChar :: (Ring r) => r -> Vec r (Copow Char v) -> Gen r (Copow Char v)
+canonicalCopowChar r Zero = CopowChar M.empty
+canonicalCopowChar r (Add x y) = CopowChar $ M.unionWith (.+.) (fromCopowChar $ canonicalCopowChar r x) (fromCopowChar $ canonicalCopowChar r y)
+canonicalCopowChar r (Mul r' x) = canonicalCopowChar (r * r') x
+canonicalCopowChar 1 (Gen x) = x
+canonicalCopowChar r (Gen x) = CopowChar $ M.map (r *.) (fromCopowChar x)
 
 instance FirstOrder Char where
-    inj b x = Gen . CopiChar $ M.singleton (ord b) x
-    mapCopiGen f (CopiChar m) = Gen . CopiChar $ M.mapMaybeWithKey (\b -> zeroToNothing . f (chr b)) m
-    collectGen (CopiChar m) = sum $ M.elems m
-    intersect f x y = Gen . CopiChar $ M.intersectionWithKey (f . chr) (fromCopiChar $ canonicalCopiChar 1 x) (fromCopiChar $ canonicalCopiChar 1 y)
-    decomposeCoprod = map (chr *** id) . M.toList . fromCopiChar . canonicalCopiChar 1
+    inj b x = Gen . CopowChar $ M.singleton (ord b) x
+    mapCopowGen f (CopowChar m) = Gen . CopowChar $ M.mapMaybeWithKey (\b -> zeroToNothing . f (chr b)) m
+    collectGen (CopowChar m) = sum $ M.elems m
+    intersect f x y = Gen . CopowChar $ M.intersectionWithKey (f . chr) (fromCopowChar $ canonicalCopowChar 1 x) (fromCopowChar $ canonicalCopowChar 1 y)
+    decomposeCoprod = map (chr *** id) . M.toList . fromCopowChar . canonicalCopowChar 1
 
-partitionCopiSum :: Vec r (Copi (Either b c) v) -> (Vec r (Copi b v), Vec r (Copi c v))
-partitionCopiSum Zero = (zero, zero)
-partitionCopiSum (Add x y) = (xb .+. yb, xc .+. yc)
+partitionCopowSum :: Vec r (Copow (Either b c) v) -> (Vec r (Copow b v), Vec r (Copow c v))
+partitionCopowSum Zero = (zero, zero)
+partitionCopowSum (Add x y) = (xb .+. yb, xc .+. yc)
     where
-        (xb, xc) = partitionCopiSum x
-        (yb, yc) = partitionCopiSum y
-partitionCopiSum (Mul r x) = (r *. xb, r *. xc)
+        (xb, xc) = partitionCopowSum x
+        (yb, yc) = partitionCopowSum y
+partitionCopowSum (Mul r x) = (r *. xb, r *. xc)
     where
-        (xb, xc) = partitionCopiSum x
-partitionCopiSum (Gen (CopiSum xb xc)) = (xb, xc)
+        (xb, xc) = partitionCopowSum x
+partitionCopowSum (Gen (CopowSum xb xc)) = (xb, xc)
 
 instance (FirstOrder b, FirstOrder c) => FirstOrder (Either b c) where
-    inj (Left b) x = Gen $ CopiSum (inj b x) zero
-    inj (Right c) x = Gen $ CopiSum zero (inj c x)
-    mapCopiGen f (CopiSum x y) = Gen $ CopiSum (mapCopi (f . Left) x) (mapCopi (f . Right) y)
-    collectGen (CopiSum x y) = collect x .+. collect y
-    intersect f x y = Gen $ CopiSum (intersect (f . Left) xb yb) (intersect (f . Right) xc yc)
+    inj (Left b) x = Gen $ CopowSum (inj b x) zero
+    inj (Right c) x = Gen $ CopowSum zero (inj c x)
+    mapCopowGen f (CopowSum x y) = Gen $ CopowSum (mapCopow (f . Left) x) (mapCopow (f . Right) y)
+    collectGen (CopowSum x y) = collect x .+. collect y
+    intersect f x y = Gen $ CopowSum (intersect (f . Left) xb yb) (intersect (f . Right) xc yc)
         where
-            (xb, xc) = partitionCopiSum x
-            (yb, yc) = partitionCopiSum y
-    decomposeCoprod = uncurry (++) . (map (Left *** id) . decomposeCoprod *** map (Right *** id) . decomposeCoprod) . partitionCopiSum
+            (xb, xc) = partitionCopowSum x
+            (yb, yc) = partitionCopowSum y
+    decomposeCoprod = uncurry (++) . (map (Left *** id) . decomposeCoprod *** map (Right *** id) . decomposeCoprod) . partitionCopowSum
 
-curryCopiProd :: (Ring r) => Vec r (Copi (b, c) v) -> Vec r (Copi b (Copi c v))
-curryCopiProd = linear go
+curryCopowProd :: (Ring r) => Vec r (Copow (b, c) v) -> Vec r (Copow b (Copow c v))
+curryCopowProd = linear go
     where
-        go :: (Ring r) => Gen r (Copi (b, c) v) -> Vec r (Copi b (Copi c v))
-        go (CopiProd x) = x
+        go :: (Ring r) => Gen r (Copow (b, c) v) -> Vec r (Copow b (Copow c v))
+        go (CopowProd x) = x
 
 instance (FirstOrder b, FirstOrder c) => FirstOrder (b, c) where
-    inj (b, c) x = Gen . CopiProd $ inj b (inj c x)
-    mapCopiGen f x = Gen . CopiProd $ mapCopi (mapCopi . curry f) (curryCopiProd $ Gen x)
-    collectGen (CopiProd x) = collect $ collect x
-    intersect f x y = Gen . CopiProd $ intersect (intersect . curry f) (curryCopiProd x) (curryCopiProd y)
-    decomposeCoprod x = [((b, c), z) | (b, y) <- decomposeCoprod (curryCopiProd x), (c, z) <- decomposeCoprod y]
+    inj (b, c) x = Gen . CopowProd $ inj b (inj c x)
+    mapCopowGen f x = Gen . CopowProd $ mapCopow (mapCopow . curry f) (curryCopowProd $ Gen x)
+    collectGen (CopowProd x) = collect $ collect x
+    intersect f x y = Gen . CopowProd $ intersect (intersect . curry f) (curryCopowProd x) (curryCopowProd y)
+    decomposeCoprod x = [((b, c), z) | (b, y) <- decomposeCoprod (curryCopowProd x), (c, z) <- decomposeCoprod y]
 
-partitionCopiList :: Vec r (Copi [b] v) -> (Vec r v, Vec r (Copi b (Copi [b] v)))
-partitionCopiList Zero = (zero, zero)
-partitionCopiList (Add x y) = (xNil .+. yNil, xCons .+. yCons)
+partitionCopowList :: Vec r (Copow [b] v) -> (Vec r v, Vec r (Copow b (Copow [b] v)))
+partitionCopowList Zero = (zero, zero)
+partitionCopowList (Add x y) = (xNil .+. yNil, xCons .+. yCons)
     where
-        (xNil, xCons) = partitionCopiList x
-        (yNil, yCons) = partitionCopiList y
-partitionCopiList (Mul r x) = (r *. xNil, r *. xCons)
+        (xNil, xCons) = partitionCopowList x
+        (yNil, yCons) = partitionCopowList y
+partitionCopowList (Mul r x) = (r *. xNil, r *. xCons)
     where
-        (xNil, xCons) = partitionCopiList x
-partitionCopiList (Gen (CopiPoly x xs)) = (x, xs)
+        (xNil, xCons) = partitionCopowList x
+partitionCopowList (Gen (CopowPoly x xs)) = (x, xs)
 
 instance (FirstOrder b) => FirstOrder [b] where
-    inj [] x = Gen $ CopiPoly x zero
-    inj (b : bs) x = Gen . CopiPoly zero $ inj b (inj bs x)
-    mapCopiGen f (CopiPoly x xs) = Gen $ CopiPoly (f [] x) (mapCopi (\b -> mapCopi (f . (:) b)) xs)
-    collectGen (CopiPoly x xs) = x .+. collect (collect xs)
-    intersect f x y = Gen $ CopiPoly (f [] xh yh) (intersect (intersect . (f .) . (:)) xt yt)
+    inj [] x = Gen $ CopowPoly x zero
+    inj (b : bs) x = Gen . CopowPoly zero $ inj b (inj bs x)
+    mapCopowGen f (CopowPoly x xs) = Gen $ CopowPoly (f [] x) (mapCopow (\b -> mapCopow (f . (:) b)) xs)
+    collectGen (CopowPoly x xs) = x .+. collect (collect xs)
+    intersect f x y = Gen $ CopowPoly (f [] xh yh) (intersect (intersect . (f .) . (:)) xt yt)
         where
-            (xh, xt) = partitionCopiList x
-            (yh, yt) = partitionCopiList y
+            (xh, xt) = partitionCopowList x
+            (yh, yt) = partitionCopowList y
     decomposeCoprod x =
         [([], x0) | not (isNominallyZero x0)] ++
         [(b : bs, z) | (b, y) <- decomposeCoprod xs, (bs, z) <- decomposeCoprod y]
         where
-            (x0, xs) = partitionCopiList x
+            (x0, xs) = partitionCopowList x
 
 instance (Ring r) => Eq (Vec r R) where
     a == b = getScalar a == getScalar b
 
-instance (Ring r, FirstOrder b, Eq (Vec r v)) => Eq (Vec r (Copi b v)) where
+instance (Ring r, FirstOrder b, Eq (Vec r v)) => Eq (Vec r (Copow b v)) where
     a == b = decomposeCoprod a == decomposeCoprod b
 
 class ShowVec (v :: Space) where
@@ -447,15 +357,15 @@ instance (Show r, Ring r, ShowVec v) => Show (Vec r v) where
 instance ShowVec R where
     showsPrecVec d = showsPrec d . getScalar
 
-instance (Show b, FirstOrder b, ShowVec v) => ShowVec (Copi b v) where
+instance (Show b, FirstOrder b, ShowVec v) => ShowVec (Copow b v) where
     showsPrecVec d =
         showSum s d . decomposeCoprod
         where
             s d (b, x) = showParen (d > 10) $ showString "inj " . showsPrec 11 b . showString " " . showsPrec 11 x
 
-instance (ShowVec v) => ShowVec (Pi b v) where
+instance (ShowVec v) => ShowVec (Pow b v) where
     showsPrecVec d x =
-        showParen True $ showString "λ " . showsPrec 0 (appPi x undefined)
+        showParen True $ showString "λ " . showsPrec 0 (appPow x undefined)
 
 instance (ShowVec u, ShowVec v) => ShowVec (u :*: v) where
     showsPrecVec d = showSum s d . decomposeTensor
@@ -480,10 +390,10 @@ instance (Ring r, NFData r, NFVec v) => NFData (Vec r v) where
     rnf (Gen x) = rnfVec x
 
 instance NFVec R where
-    rnfVec (Scalar r) = rnf r
+    rnfVec Scalar = ()
 
-instance (NFData a, FirstOrder a, NFVec v) => NFVec (Copi a v) where
-    rnfVec = rnf . decomposeCoprod . Gen
+instance (NFData a, FirstOrder a, NFVec v) => NFVec (Copow a v) where
+    rnfVec = rnf . collectGen
 
 instance (NFVec u, NFVec v) => NFVec (u :*: v) where
     rnfVec (Tensor x y) = rnf x `seq` rnf y

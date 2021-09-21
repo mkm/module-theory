@@ -4,7 +4,7 @@ cabal-version:       >=1.10
 -- http://haskell.org/cabal/users-guide/
 
 name:                module-theory
-version:             0.1.0.0
+version:             0.2.0.0
 synopsis:            Query processing with Module Theory
 license:             GPL-3
 license-file:        LICENSE
@@ -19,7 +19,6 @@ library
   default-language:  Haskell2010
   exposed-modules:   ModuleTheory.Space,
                      ModuleTheory.Vector,
-                     ModuleTheory.Eval,
                      ModuleTheory.Tick,
                      ModuleTheory.Intersect,
                      ModuleTheory.Example,
