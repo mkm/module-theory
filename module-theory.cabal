@@ -23,4 +23,5 @@ library
                      ModuleTheory.Intersect,
                      ModuleTheory.Example,
                      ModuleTheory.Polyset,
-                     ModuleTheory.Set
+                     ModuleTheory.Set,
+                     ESOP

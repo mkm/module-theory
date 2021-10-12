@@ -11,9 +11,7 @@ module ModuleTheory.Vector (
         tensor3,
         mkScalar,
         getScalar,
-        mul,
-        mul3,
-        sum,
+        sumList,
         linear,
         bilinear,
         decomposeSum,
@@ -21,9 +19,16 @@ module ModuleTheory.Vector (
         tensorExt,
         extTensor,
         extTensor3,
+        mapTensor,
+        powExt,
         appPow,
+        single,
         mapCopow,
         hmapCopow,
+        copowExt,
+        sum,
+        weight,
+        freeExt,
         collect,
         collect2,
         collect3,
@@ -31,6 +36,10 @@ module ModuleTheory.Vector (
         collect5,
         collect6,
         FirstOrder(..),
+        cinj,
+        csingle,
+        ccopowExt,
+        cfreeExt,
         ShowVec(..),
         curryCopowProd,
     ) where
@@ -53,7 +62,7 @@ data Vec r v = Zero | Add (Vec r v) (Vec r v) | Mul r (Vec r v) | Gen (Gen r v)
 
 data family Gen r (v :: Space) :: Type
 
-data instance Gen r R = Scalar
+data instance Gen r R = One
 
 newtype instance Gen r (Copow () v) = CopowUnit { fromCopowUnit :: Vec r v }
 
@@ -66,6 +75,8 @@ data instance Gen r (Copow (Either b c) v) = CopowSum (Vec r (Copow b v)) (Vec r
 newtype instance Gen r (Copow (b, c) v) = CopowProd (Vec r (Copow b (Copow c v)))
 
 data instance Gen r (Copow [b] v) = CopowPoly (Vec r v) (Vec r (Copow b (Copow [b] v)))
+
+data instance Gen r (CCopow b v) = AdjoinUnit (Vec r v) (Vec r (Copow b v))
 
 newtype instance Gen r (Pow b v) = PowExt { fromPow :: b -> Vec r v }
 
@@ -111,23 +122,17 @@ tensor3 x y z = x .*. y .*. z
 
 mkScalar :: (Ring r) => r -> Vec r R
 mkScalar 0 = Zero
-mkScalar 1 = Gen Scalar
-mkScalar r = Mul r (Gen Scalar)
+mkScalar 1 = Gen One
+mkScalar r = Mul r (Gen One)
 
 getScalar :: (Ring r) => Vec r R -> r
 getScalar Zero = 0
 getScalar (Add x y) = getScalar x + getScalar y
 getScalar (Mul r x) = r * getScalar x
-getScalar (Gen Scalar) = 1
+getScalar (Gen One) = 1
 
-mul :: (Ring r) => Vec r (R :*: R) -> Vec r R
-mul = tensorExt (*)
-
-mul3 :: (Ring r) => Vec r (R :*: R :*: R) -> Vec r R
-mul3 = tensorExt $ \x -> tensorExt $ \y z -> x * y * z
-
-sum :: [Vec r v] -> Vec r v
-sum = foldr (.+.) zero
+sumList :: [Vec r v] -> Vec r v
+sumList = foldr (.+.) zero
 
 linear :: (Gen r u -> Vec r v) -> Vec r u -> Vec r v
 linear f Zero = zero
@@ -178,19 +183,17 @@ extTensor = flip tensorExt
 extTensor3 :: (Ring r) => Vec r (u1 :*: u2 :*: u3) -> (Vec r u1 -> Vec r u2 -> Vec r u3 -> Vec r v) -> Vec r v
 extTensor3 x f = extTensor x $ \x1 -> tensorExt $ \x2 x3 -> f x1 x2 x3
 
+mapTensor :: (Ring r) => (Vec r u1 -> Vec r v1) -> (Vec r u2 -> Vec r v2) -> Vec r (u1 :*: u2) -> Vec r (v1 :*: v2)
+mapTensor f g = tensorExt $ \u v -> f u .*. g v
+
+powExt :: (a -> Vec r u) -> Vec r (Pow a u)
+powExt = Gen . PowExt
+
 appPow :: Vec r (Pow a u) -> a -> Vec r u
 appPow Zero = const Zero
 appPow (Add x y) = \a -> Add (appPow x a) (appPow y a)
 appPow (Mul r x) = \a -> Mul r (appPow x a)
 appPow (Gen x) = fromPow x
-
-instance Ring r => Num (Vec r R) where
-    x + y = mkScalar $ getScalar x + getScalar y
-    negate x= mkScalar $ negate (getScalar x)
-    x * y = mkScalar $ getScalar x * getScalar y
-    abs x = mkScalar $ abs (getScalar x)
-    signum x = mkScalar $ signum (getScalar x)
-    fromInteger x = mkScalar $ fromInteger x
 
 -- | A type is first-order if it can be used efficiently as the index of a copower. 
 class Eq b => FirstOrder b where
@@ -201,9 +204,12 @@ class Eq b => FirstOrder b where
     -- | Sum of the mappings contained in a copower generator.
     collectGen :: (Ring r) => Gen r (Copow b v) -> Vec r v
     -- | Intersection of two copowers.
-    intersect :: (Ring r) => (b -> Vec r u -> Vec r v -> Vec r w) -> Vec r (Copow b u) -> Vec r (Copow b v) -> Vec r (Copow b w)
+    intersectCopow :: (Ring r) => (b -> Vec r u -> Vec r v -> Vec r w) -> Vec r (Copow b u) -> Vec r (Copow b v) -> Vec r (Copow b w)
     -- | Compute a list of mappings contained in a copower.
-    decomposeCoprod :: (Ring r) => Vec r (Copow b v) -> [(b, Vec r v)]
+    decomposeCopow :: (Ring r) => Vec r (Copow b v) -> [(b, Vec r v)]
+
+single :: (FirstOrder b) => b -> Vec r (Free b)
+single b = inj b (Gen One)
 
 -- | Transform a copower by specifying what happens to 'inj b v'.
 mapCopow :: (Ring r, FirstOrder b) => (b -> Vec r u -> Vec r v) -> Vec r (Copow b u) -> Vec r (Copow b v)
@@ -212,6 +218,18 @@ mapCopow = linear . mapCopowGen
 -- | Transform a copower by specifying what happens to 'inj b v' independent of 'b'.
 hmapCopow :: (Ring r, FirstOrder b) => (Vec r u -> Vec r v) -> Vec r (Copow b u) -> Vec r (Copow b v)
 hmapCopow f = mapCopow (const f)
+
+copowExt :: (Ring r, FirstOrder b) => (b -> Vec r u -> Vec r v) -> Vec r (Copow b u) -> Vec r v
+copowExt f = sumList . map (uncurry f) . decomposeCopow
+
+sum :: (Ring r, FirstOrder b) => Vec r (Copow b u) -> Vec r u
+sum = copowExt (const id)
+
+weight :: (Ring r, FirstOrder b) => Vec r (Free b) -> r
+weight = getScalar . sum
+
+freeExt :: (Ring r, FirstOrder b) => (b -> Vec r v) -> Vec r (Free b) -> Vec r v
+freeExt f = copowExt (\b r -> getScalar r *. f b)
 
 -- | Sum of the mappings contained in a copower.
 collect :: (Ring r, FirstOrder b)
@@ -247,8 +265,8 @@ instance FirstOrder () where
     inj () x = Gen $ CopowUnit x
     mapCopowGen f (CopowUnit x) = Gen $ CopowUnit (f () x)
     collectGen (CopowUnit x) = x
-    intersect f x y = Gen . CopowUnit $ f () (linear fromCopowUnit x) (linear fromCopowUnit y)
-    decomposeCoprod x = [((), y) | let y = linear fromCopowUnit x, not (isNominallyZero y)]
+    intersectCopow f x y = Gen . CopowUnit $ f () (linear fromCopowUnit x) (linear fromCopowUnit y)
+    decomposeCopow x = [((), y) | let y = linear fromCopowUnit x, not (isNominallyZero y)]
 
 canonicalCopowInt :: (Ring r) => r -> Vec r (Copow Int v) -> Gen r (Copow Int v)
 canonicalCopowInt r Zero = CopowInt M.empty
@@ -260,9 +278,9 @@ canonicalCopowInt r (Gen x) = CopowInt $ M.map (r *.) (fromCopowInt x)
 instance FirstOrder Int where
     inj b x = Gen . CopowInt $ M.singleton b x
     mapCopowGen f (CopowInt m) = Gen . CopowInt $ M.mapMaybeWithKey (\b -> zeroToNothing . f b) m
-    collectGen (CopowInt m) = sum $ M.elems m
-    intersect f x y = Gen . CopowInt $ M.intersectionWithKey f (fromCopowInt $ canonicalCopowInt 1 x) (fromCopowInt $ canonicalCopowInt 1 y)
-    decomposeCoprod = M.toList . fromCopowInt . canonicalCopowInt 1
+    collectGen (CopowInt m) = sumList $ M.elems m
+    intersectCopow f x y = Gen . CopowInt $ M.intersectionWithKey f (fromCopowInt $ canonicalCopowInt 1 x) (fromCopowInt $ canonicalCopowInt 1 y)
+    decomposeCopow = M.toList . fromCopowInt . canonicalCopowInt 1
 
 canonicalCopowChar :: (Ring r) => r -> Vec r (Copow Char v) -> Gen r (Copow Char v)
 canonicalCopowChar r Zero = CopowChar M.empty
@@ -274,9 +292,9 @@ canonicalCopowChar r (Gen x) = CopowChar $ M.map (r *.) (fromCopowChar x)
 instance FirstOrder Char where
     inj b x = Gen . CopowChar $ M.singleton (ord b) x
     mapCopowGen f (CopowChar m) = Gen . CopowChar $ M.mapMaybeWithKey (\b -> zeroToNothing . f (chr b)) m
-    collectGen (CopowChar m) = sum $ M.elems m
-    intersect f x y = Gen . CopowChar $ M.intersectionWithKey (f . chr) (fromCopowChar $ canonicalCopowChar 1 x) (fromCopowChar $ canonicalCopowChar 1 y)
-    decomposeCoprod = map (chr *** id) . M.toList . fromCopowChar . canonicalCopowChar 1
+    collectGen (CopowChar m) = sumList $ M.elems m
+    intersectCopow f x y = Gen . CopowChar $ M.intersectionWithKey (f . chr) (fromCopowChar $ canonicalCopowChar 1 x) (fromCopowChar $ canonicalCopowChar 1 y)
+    decomposeCopow = map (chr *** id) . M.toList . fromCopowChar . canonicalCopowChar 1
 
 partitionCopowSum :: Vec r (Copow (Either b c) v) -> (Vec r (Copow b v), Vec r (Copow c v))
 partitionCopowSum Zero = (zero, zero)
@@ -294,11 +312,11 @@ instance (FirstOrder b, FirstOrder c) => FirstOrder (Either b c) where
     inj (Right c) x = Gen $ CopowSum zero (inj c x)
     mapCopowGen f (CopowSum x y) = Gen $ CopowSum (mapCopow (f . Left) x) (mapCopow (f . Right) y)
     collectGen (CopowSum x y) = collect x .+. collect y
-    intersect f x y = Gen $ CopowSum (intersect (f . Left) xb yb) (intersect (f . Right) xc yc)
+    intersectCopow f x y = Gen $ CopowSum (intersectCopow (f . Left) xb yb) (intersectCopow (f . Right) xc yc)
         where
             (xb, xc) = partitionCopowSum x
             (yb, yc) = partitionCopowSum y
-    decomposeCoprod = uncurry (++) . (map (Left *** id) . decomposeCoprod *** map (Right *** id) . decomposeCoprod) . partitionCopowSum
+    decomposeCopow = uncurry (++) . (map (Left *** id) . decomposeCopow *** map (Right *** id) . decomposeCopow) . partitionCopowSum
 
 curryCopowProd :: (Ring r) => Vec r (Copow (b, c) v) -> Vec r (Copow b (Copow c v))
 curryCopowProd = linear go
@@ -310,8 +328,8 @@ instance (FirstOrder b, FirstOrder c) => FirstOrder (b, c) where
     inj (b, c) x = Gen . CopowProd $ inj b (inj c x)
     mapCopowGen f x = Gen . CopowProd $ mapCopow (mapCopow . curry f) (curryCopowProd $ Gen x)
     collectGen (CopowProd x) = collect $ collect x
-    intersect f x y = Gen . CopowProd $ intersect (intersect . curry f) (curryCopowProd x) (curryCopowProd y)
-    decomposeCoprod x = [((b, c), z) | (b, y) <- decomposeCoprod (curryCopowProd x), (c, z) <- decomposeCoprod y]
+    intersectCopow f x y = Gen . CopowProd $ intersectCopow (intersectCopow . curry f) (curryCopowProd x) (curryCopowProd y)
+    decomposeCopow x = [((b, c), z) | (b, y) <- decomposeCopow (curryCopowProd x), (c, z) <- decomposeCopow y]
 
 partitionCopowList :: Vec r (Copow [b] v) -> (Vec r v, Vec r (Copow b (Copow [b] v)))
 partitionCopowList Zero = (zero, zero)
@@ -329,21 +347,46 @@ instance (FirstOrder b) => FirstOrder [b] where
     inj (b : bs) x = Gen . CopowPoly zero $ inj b (inj bs x)
     mapCopowGen f (CopowPoly x xs) = Gen $ CopowPoly (f [] x) (mapCopow (\b -> mapCopow (f . (:) b)) xs)
     collectGen (CopowPoly x xs) = x .+. collect (collect xs)
-    intersect f x y = Gen $ CopowPoly (f [] xh yh) (intersect (intersect . (f .) . (:)) xt yt)
+    intersectCopow f x y = Gen $ CopowPoly (f [] xh yh) (intersectCopow (intersectCopow . (f .) . (:)) xt yt)
         where
             (xh, xt) = partitionCopowList x
             (yh, yt) = partitionCopowList y
-    decomposeCoprod x =
+    decomposeCopow x =
         [([], x0) | not (isNominallyZero x0)] ++
-        [(b : bs, z) | (b, y) <- decomposeCoprod xs, (bs, z) <- decomposeCoprod y]
+        [(b : bs, z) | (b, y) <- decomposeCopow xs, (bs, z) <- decomposeCopow y]
         where
             (x0, xs) = partitionCopowList x
+
+cinj :: (FirstOrder b) => b -> Vec r v -> Vec r (CCopow b v)
+cinj x v = Gen $ AdjoinUnit zero (inj x v)
+
+csingle :: (FirstOrder b) => b -> Vec r (CFree b)
+csingle b = cinj b (Gen One)
+
+ccopowExt :: (Ring r, FirstOrder b) => (Vec r u -> Vec r v) -> (b -> Vec r u -> Vec r v) -> Vec r (CCopow b u) -> Vec r v
+ccopowExt u f x = u xUnit .+. copowExt f xVal
+    where
+        AdjoinUnit xUnit xVal = decomposeCCopow x
+
+cfreeExt :: (Ring r, FirstOrder b) => Vec r v -> (b -> Vec r v) -> Vec r (CFree b) -> Vec r v
+cfreeExt u f = ccopowExt (\r -> getScalar r *. u) (\b r -> getScalar r *. f b)
+
+decomposeCCopow :: Vec r (CCopow b v) -> Gen r (CCopow b v)
+decomposeCCopow Zero = AdjoinUnit zero zero
+decomposeCCopow (Add x y) = AdjoinUnit (xUnit .+. yUnit) (xVal .+. yVal)
+    where
+        AdjoinUnit xUnit xVal = decomposeCCopow x
+        AdjoinUnit yUnit yVal = decomposeCCopow y
+decomposeCCopow (Mul r x) = AdjoinUnit (r *. xUnit) (r *. xVal)
+    where
+        AdjoinUnit xUnit xVal = decomposeCCopow x
+decomposeCCopow (Gen x) = x
 
 instance (Ring r) => Eq (Vec r R) where
     a == b = getScalar a == getScalar b
 
 instance (Ring r, FirstOrder b, Eq (Vec r v)) => Eq (Vec r (Copow b v)) where
-    a == b = decomposeCoprod a == decomposeCoprod b
+    a == b = decomposeCopow a == decomposeCopow b
 
 class ShowVec (v :: Space) where
     showsVec :: (Show r, Ring r) => Vec r v -> ShowS
@@ -359,7 +402,7 @@ instance ShowVec R where
 
 instance (Show b, FirstOrder b, ShowVec v) => ShowVec (Copow b v) where
     showsPrecVec d =
-        showSum s d . decomposeCoprod
+        showSum s d . decomposeCopow
         where
             s d (b, x) = showParen (d > 10) $ showString "inj " . showsPrec 11 b . showString " " . showsPrec 11 x
 
@@ -390,7 +433,7 @@ instance (Ring r, NFData r, NFVec v) => NFData (Vec r v) where
     rnf (Gen x) = rnfVec x
 
 instance NFVec R where
-    rnfVec Scalar = ()
+    rnfVec One = ()
 
 instance (NFData a, FirstOrder a, NFVec v) => NFVec (Copow a v) where
     rnfVec = rnf . collectGen

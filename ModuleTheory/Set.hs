@@ -5,9 +5,9 @@ module ModuleTheory.Set (
         mkSet,
     ) where
 
-import Prelude hiding (sum)
 import ModuleTheory.Space
 import ModuleTheory.Vector
+import ModuleTheory.Intersect
 
 data B = O | I
     deriving (Eq)
@@ -37,4 +37,4 @@ instance Num B where
         | otherwise = undefined
 
 mkSet :: (FirstOrder a) => [a] -> Set a
-mkSet = sum . map (`inj` 1)
+mkSet = sumList . map (`inj` 1)
