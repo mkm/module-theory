@@ -16,7 +16,7 @@ g = freeExt $ single . reverse
 containsFoo :: (Ring r) => Vec r (CFree String) -> Vec r R
 containsFoo = cfreeExt 1 (\s -> if s == "foo" then 1 else 0)
 
-indexByLength :: (Ring r) => Vec r (Free String) -> Vec r (Copow Int (Free String))
+indexByLength :: (Ring r) => Vec r (Free String) -> Vec r (Int :=> Free String)
 indexByLength = freeExt $ \s -> inj (length s) (single s)
 
 -- 3 Linear Algebra as a Query Language

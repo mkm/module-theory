@@ -37,14 +37,14 @@ instance Algebra R where
 instance UnitalAlgebra R where
     unit = mkScalar 1
 
-instance (FirstOrder a, Algebra v) => Algebra (Copow a v) where
+instance (FirstOrder a, Algebra v) => Algebra (a :=> v) where
     intersect = intersectCopow (const intersect)
 
-instance (FirstOrder a, Algebra v) => Algebra (CCopow a v) where
+instance (FirstOrder a, Algebra v) => Algebra (a :=>* v) where
     intersect = bilinear $ \(AdjoinUnit u1 v1) (AdjoinUnit u2 v2) ->
         Gen $ AdjoinUnit (intersect u1 u2) (intersect v1 v2 .+. mapCopow (const (`intersect` u2)) v1 .+. mapCopow (const (u1 `intersect`)) v2)
 
-instance (FirstOrder a, UnitalAlgebra v) => UnitalAlgebra (CCopow a v) where
+instance (FirstOrder a, UnitalAlgebra v) => UnitalAlgebra (a :=>* v) where
     unit = Gen $ AdjoinUnit 1 zero
 
 instance Algebra v => Algebra (Pow a v) where
@@ -65,30 +65,30 @@ instance (Algebra u, Algebra v) => Algebra (u :*: v) where
 instance (UnitalAlgebra u, UnitalAlgebra v) => UnitalAlgebra (u :*: v) where
     unit = unit .*. unit
 
-intersect2 :: (Ring r, FirstOrder a) => Vec r (Copow a u1) -> Vec r (Copow a u2) -> (Vec r u1 -> Vec r u2 -> Vec r v) -> Vec r (Copow a v)
+intersect2 :: (Ring r, FirstOrder a) => Vec r (a :=> u1) -> Vec r (a :=> u2) -> (Vec r u1 -> Vec r u2 -> Vec r v) -> Vec r (a :=> v)
 intersect2 u1 u2 f = tick $ intersectCopow (\_ x y -> tick $ f x y) u1 u2
 
-intersect2' :: (Ring r, FirstOrder a) => Vec r (Copow a u1) -> Vec r (Copow a u2) -> (a -> Vec r u1 -> Vec r u2 -> Vec r v) -> Vec r (Copow a v)
+intersect2' :: (Ring r, FirstOrder a) => Vec r (a :=> u1) -> Vec r (a :=> u2) -> (a -> Vec r u1 -> Vec r u2 -> Vec r v) -> Vec r (a :=> v)
 intersect2' u1 u2 f = tick $ intersectCopow (\a x y -> tick $ f a x y) u1 u2
 
 intersect3 :: (Ring r, FirstOrder a) =>
-    Vec r (Copow a u1) -> Vec r (Copow a u2) -> Vec r (Copow a u3) ->
+    Vec r (a :=> u1) -> Vec r (a :=> u2) -> Vec r (a :=> u3) ->
     (Vec r u1 -> Vec r u2 -> Vec r u3 -> Vec r v) ->
-    Vec r (Copow a v)
+    Vec r (a :=> v)
 intersect3 u1 u2 u3 f = intersect2 u1 (intersect2 u2 u3 (.*.)) $ \x1 -> tensorExt $ \x2 x3 -> f x1 x2 x3
 
 intersect4 :: (Ring r, FirstOrder a) =>
-    Vec r (Copow a u1) -> Vec r (Copow a u2) -> Vec r (Copow a u3) -> Vec r (Copow a u4) ->
+    Vec r (a :=> u1) -> Vec r (a :=> u2) -> Vec r (a :=> u3) -> Vec r (a :=> u4) ->
     (Vec r u1 -> Vec r u2 -> Vec r u3 -> Vec r u4 -> Vec r v) ->
-    Vec r (Copow a v)
+    Vec r (a :=> v)
 intersect4 u1 u2 u3 u4 f = intersect2 u1 (intersect3 u2 u3 u4 tensor3) $ \x1 -> tensorExt $ \x2 -> tensorExt $ \x3 x4 -> f x1 x2 x3 x4
 
 intersectThreeCycle :: (Ring r, FirstOrder a, FirstOrder b, FirstOrder c) => 
-    Vec r (Copow a (Copow b u1)) ->
-    Vec r (Copow a (Copow c u2)) ->
-    Vec r (Copow b (Copow c u3)) ->
+    Vec r (a :=> b :=> u1) ->
+    Vec r (a :=> c :=> u2) ->
+    Vec r (b :=> c :=> u3) ->
     (Vec r u1 -> Vec r u2 -> Vec r u3 -> Vec r v) ->
-    Vec r (Copow a (Copow b (Copow c v)))
+    Vec r (a :=> b :=> c :=> v)
 intersectThreeCycle x y z f =
     intersect2 x y $ \x' y' ->
     intersect2 x' z $ \x'' z' ->
@@ -96,11 +96,11 @@ intersectThreeCycle x y z f =
     f x'' y'' z''
 
 traditionalIntersectThreeCycle :: (Ring r, FirstOrder a, FirstOrder b, FirstOrder c) => 
-    Vec r (Copow a (Copow b u1)) ->
-    Vec r (Copow a (Copow c u2)) ->
-    Vec r (Copow b (Copow c u3)) ->
+    Vec r (a :=> b :=> u1) ->
+    Vec r (a :=> c :=> u2) ->
+    Vec r (b :=> c :=> u3) ->
     (Vec r u1 -> Vec r u2 -> Vec r u3 -> Vec r v) ->
-    Vec r (Copow a (Copow b (Copow c v)))
+    Vec r (a :=> b :=> c :=> v)
 traditionalIntersectThreeCycle x y z f =
     intersect2 x y $ \x' y' ->
     let w = materialiseProduct x' y' in
@@ -109,12 +109,12 @@ traditionalIntersectThreeCycle x y z f =
     tensorExt (\x'' y'' -> f x'' y'' z'') w''
 
 intersectFourCycle :: (Ring r, FirstOrder a, FirstOrder b, FirstOrder c, FirstOrder d) => 
-    Vec r (Copow a (Copow b u1)) ->
-    Vec r (Copow b (Copow c u2)) ->
-    Vec r (Copow c (Copow d u3)) ->
-    Vec r (Copow a (Copow d u4)) ->
+    Vec r (a :=> b :=> u1) ->
+    Vec r (b :=> c :=> u2) ->
+    Vec r (c :=> d :=> u3) ->
+    Vec r (a :=> d :=> u4) ->
     (Vec r u1 -> Vec r u2 -> Vec r u3 -> Vec r u4 -> Vec r v) ->
-    Vec r (Copow a (Copow b (Copow c (Copow d v))))
+    Vec r (a :=> b :=> c :=> d :=> v)
 intersectFourCycle x y z w f =
     intersect2 x w $ \x' w' ->
     intersect2 x' y $ \x'' y' ->
@@ -123,12 +123,12 @@ intersectFourCycle x y z w f =
     f x'' y'' z'' w''
 
 traditionalIntersectFourCycle :: (Ring r, FirstOrder a, FirstOrder b, FirstOrder c, FirstOrder d) => 
-    Vec r (Copow a (Copow b u1)) ->
-    Vec r (Copow b (Copow c u2)) ->
-    Vec r (Copow c (Copow d u3)) ->
-    Vec r (Copow a (Copow d u4)) ->
+    Vec r (a :=> b :=> u1) ->
+    Vec r (b :=> c :=> u2) ->
+    Vec r (c :=> d :=> u3) ->
+    Vec r (a :=> d :=> u4) ->
     (Vec r u1 -> Vec r u2 -> Vec r u3 -> Vec r u4 -> Vec r v) ->
-    Vec r (Copow a (Copow b (Copow c (Copow d v))))
+    Vec r (a :=> b :=> c :=> d :=> v)
 traditionalIntersectFourCycle x y z w f =
     intersect2 x w $ \x' w' ->
     let p = materialiseProduct x' w' in
@@ -136,12 +136,12 @@ traditionalIntersectFourCycle x y z w f =
     tensorExt (\x'' w'' -> f x'' y'' z'' w'') p''
 
 intersectFourDense :: (Ring r, FirstOrder a, FirstOrder b, FirstOrder c, FirstOrder d) => 
-    Vec r (Copow a (Copow b (Copow c u1))) ->
-    Vec r (Copow a (Copow b (Copow d u2))) ->
-    Vec r (Copow a (Copow c (Copow d u3))) ->
-    Vec r (Copow b (Copow c (Copow d u4))) ->
+    Vec r (a :=> b :=> c :=> u1) ->
+    Vec r (a :=> b :=> d :=> u2) ->
+    Vec r (a :=> c :=> d :=> u3) ->
+    Vec r (b :=> c :=> d :=> u4) ->
     (Vec r u1 -> Vec r u2 -> Vec r u3 -> Vec r u4 -> Vec r v) ->
-    Vec r (Copow a (Copow b (Copow c (Copow d v))))
+    Vec r (a :=> b :=> c :=> d :=> v)
 intersectFourDense x y z w f =
     intersect3 x y z $ \x' y' z' ->
     intersect3 x' y' w $ \x'' y'' w' ->
@@ -150,12 +150,12 @@ intersectFourDense x y z w f =
     f x''' y''' z''' w'''
 
 traditionalIntersectFourDense :: (Ring r, FirstOrder a, FirstOrder b, FirstOrder c, FirstOrder d) => 
-    Vec r (Copow a (Copow b (Copow c u1))) ->
-    Vec r (Copow a (Copow b (Copow d u2))) ->
-    Vec r (Copow a (Copow c (Copow d u3))) ->
-    Vec r (Copow b (Copow c (Copow d u4))) ->
+    Vec r (a :=> b :=> c :=> u1) ->
+    Vec r (a :=> b :=> d :=> u2) ->
+    Vec r (a :=> c :=> d :=> u3) ->
+    Vec r (b :=> c :=> d :=> u4) ->
     (Vec r u1 -> Vec r u2 -> Vec r u3 -> Vec r u4 -> Vec r v) ->
-    Vec r (Copow a (Copow b (Copow c (Copow d v))))
+    Vec r (a :=> b :=> c :=> d :=> v)
 traditionalIntersectFourDense x y z w f =
     let xy = intersect2 x y $ \x' y' -> intersect2 x' y' $ \x'' y'' -> materialiseProduct x'' y'' in
     intersect2 xy z $ \xy' z' ->
@@ -166,17 +166,17 @@ traditionalIntersectFourDense x y z w f =
     tensorExt (\xy'''' z'''' -> tensorExt (\x'''' y'''' -> f x'''' y'''' z'''' w''') xy'''') xyz''''
 
 intersectFourTriangles :: (Ring r, FirstOrder a, FirstOrder b, FirstOrder c, FirstOrder d, FirstOrder e, FirstOrder f) =>
-    Vec r (Copow a (Copow d u1)) ->
-    Vec r (Copow a (Copow e u2)) ->
-    Vec r (Copow d (Copow e u3)) ->
-    Vec r (Copow b (Copow d u4)) ->
-    Vec r (Copow b (Copow f u5)) ->
-    Vec r (Copow d (Copow f u6)) ->
-    Vec r (Copow c (Copow e u7)) ->
-    Vec r (Copow c (Copow f u8)) ->
-    Vec r (Copow e (Copow f u9)) ->
+    Vec r (a :=> d :=> u1) ->
+    Vec r (a :=> e :=> u2) ->
+    Vec r (d :=> e :=> u3) ->
+    Vec r (b :=> d :=> u4) ->
+    Vec r (b :=> f :=> u5) ->
+    Vec r (d :=> f :=> u6) ->
+    Vec r (c :=> e :=> u7) ->
+    Vec r (c :=> f :=> u8) ->
+    Vec r (e :=> f :=> u9) ->
     (Vec r u1 -> Vec r u2 -> Vec r u3 -> Vec r u4 -> Vec r u5  -> Vec r u6 -> Vec r u7 -> Vec r u8 -> Vec r u9 -> Vec r v) ->
-    Vec r (Copow a (Copow b (Copow c (Copow d (Copow e (Copow f v))))))
+    Vec r (a :=> b :=> c :=> d :=> e :=> f :=> v)
 intersectFourTriangles x1 x2 x3 x4 x5 x6 x7 x8 x9 f =
     intersect2 x1 x2 $ \x1' x2' ->
     intersect2 x4 x5 $ \x4' x5' ->
@@ -187,17 +187,17 @@ intersectFourTriangles x1 x2 x3 x4 x5 x6 x7 x8 x9 f =
     f x1'' x2'' x3'' x4'' x5'' x6'' x7'' x8'' x9''
 
 traditionalIntersectFourTriangles :: (Ring r, FirstOrder a, FirstOrder b, FirstOrder c, FirstOrder d, FirstOrder e, FirstOrder f) =>
-    Vec r (Copow a (Copow d u1)) ->
-    Vec r (Copow a (Copow e u2)) ->
-    Vec r (Copow d (Copow e u3)) ->
-    Vec r (Copow b (Copow d u4)) ->
-    Vec r (Copow b (Copow f u5)) ->
-    Vec r (Copow d (Copow f u6)) ->
-    Vec r (Copow c (Copow e u7)) ->
-    Vec r (Copow c (Copow f u8)) ->
-    Vec r (Copow e (Copow f u9)) ->
+    Vec r (a :=> d :=> u1) ->
+    Vec r (a :=> e :=> u2) ->
+    Vec r (d :=> e :=> u3) ->
+    Vec r (b :=> d :=> u4) ->
+    Vec r (b :=> f :=> u5) ->
+    Vec r (d :=> f :=> u6) ->
+    Vec r (c :=> e :=> u7) ->
+    Vec r (c :=> f :=> u8) ->
+    Vec r (e :=> f :=> u9) ->
     (Vec r u1 -> Vec r u2 -> Vec r u3 -> Vec r u4 -> Vec r u5  -> Vec r u6 -> Vec r u7 -> Vec r u8 -> Vec r u9 -> Vec r v) ->
-    Vec r (Copow a (Copow b (Copow c (Copow d (Copow e (Copow f v))))))
+    Vec r (a :=> b :=> c :=> d :=> e :=> f :=> v)
 traditionalIntersectFourTriangles x1 x2 x3 x4 x5 x6 x7 x8 x9 f =
     let x123 = traditionalIntersectThreeCycle x1 x2 x3 (\x1' x2' x3' -> x1' .*. x2' .*. x3') in
     let x456 = traditionalIntersectThreeCycle x4 x5 x6 (\x4' x5' x6' -> x4' .*. x5' .*. x6') in
@@ -209,9 +209,9 @@ traditionalIntersectFourTriangles x1 x2 x3 x4 x5 x6 x7 x8 x9 f =
     extTensor3 x789'' $ \x7'' x8'' x9'' ->
     f x1'' x2'' x3'' x4'' x5'' x6'' x7'' x8'' x9''
 
-each :: (Ring r, FirstOrder a) => Vec r (Copow a u) -> (Vec r u -> Vec r v) -> Vec r (Copow a v)
+each :: (Ring r, FirstOrder a) => Vec r (a :=> u) -> (Vec r u -> Vec r v) -> Vec r (a :=> v)
 each = flip hmapCopow
 
 materialiseProduct :: (Ring r, FirstOrder a, FirstOrder b) =>
-    Vec r (Copow a u) -> Vec r (Copow b v) -> Vec r (Copow a (Copow b (u :*: v)))
+    Vec r (a :=> u) -> Vec r (b :=> v) -> Vec r (a :=> b :=> u :*: v)
 materialiseProduct x y = hmapCopow (\x' -> tick $ hmapCopow (\y' -> tick $ x' .*. y') y) x

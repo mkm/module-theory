@@ -10,24 +10,24 @@ import ModuleTheory.Intersect
 import ModuleTheory.Polyset
 import ModuleTheory.Set
 
-cube2 :: Int -> IVec (Copow Int (Copow Int R))
+cube2 :: Int -> IVec (Int :=> Int :=> R)
 cube2 n = curryCopowProd . mkPolyset . take n $
     concat [concat [[(k, k'), (k', k)] | k' <- [1 .. k - 1]] ++ [(k, k)] | k <- [1 ..]]
 
-cube3 :: Int -> IVec (Copow Int (Copow Int (Copow Int R)))
+cube3 :: Int -> IVec (Int :=> Int :=> Int :=> R)
 cube3 n = curryCopowProd . curryCopowProd . mkPolyset . take n $ [((k1, k2), k3) | k1 <- [1 .. nr], k2 <- [1 .. nr], k3 <- [1 .. nr]]
     where
         nr = ceiling (fromIntegral n ** (1 / 3))
 
-caltrop2 :: Int -> IVec (Copow Int (Copow Int R))
+caltrop2 :: Int -> IVec (Int :=> Int :=> R)
 caltrop2 n = curryCopowProd . mkPolyset . take n $
     (1, 1) : concat [[(k, 1), (1, k)] | k <- [2 ..]]
 
-caltrop3 :: Int -> IVec (Copow Int (Copow Int (Copow Int R)))
+caltrop3 :: Int -> IVec (Int :=> Int :=> Int :=> R)
 caltrop3 n = curryCopowProd . curryCopowProd . mkPolyset . take n $
     ((1, 1), 1) : concat [[((k, 1), 1), ((1, k), 1), ((1, 1), k)] | k <- [2 ..]]
 
-fin3 :: Int -> IVec (Copow Int (Copow Int (Copow Int R)))
+fin3 :: Int -> IVec (Int :=> Int :=> Int :=> R)
 fin3 n = curryCopowProd . curryCopowProd . mkPolyset . take n $
     ((1, 1), 1) : concat [
         [((k, 1), 1), ((1, k), 1), ((1, 1), k)] ++
@@ -48,13 +48,13 @@ fourTriangles impl shape n =
     collect6 . impl (shape n) (shape n) (shape n) (shape n) (shape n) (shape n) (shape n) (shape n) (shape n) $
     \a b c d e f g h i -> a * b * c * d * e * f * g * h * i
 
-sparseTriangle :: Int -> IVec (Copow Int (Copow Int R))
+sparseTriangle :: Int -> IVec (Int :=> Int :=> R)
 sparseTriangle n = curryCopowProd . mkPolyset $ [(k, 1) | k <- [1 .. n]] ++ [(1, k) | k <- [2 .. n]]
 
-denseTriangle :: Int -> IVec (Copow Int (Copow Int R))
+denseTriangle :: Int -> IVec (Int :=> Int :=> R)
 denseTriangle n = curryCopowProd . mkPolyset $ [(k1, k2) | k1 <- [1 .. n], k2 <- [1 .. n]]
 
-denseFourCycle :: Int -> IVec (Copow Int (Copow Int (Copow Int R)))
+denseFourCycle :: Int -> IVec (Int :=> Int :=> Int :=> R)
 denseFourCycle n = curryCopowProd . curryCopowProd . mkPolyset $ [((k1, k2), k3) | k1 <- [1 .. n], k2 <- [1 .. n], k3 <- [1 .. n]]
 
 fastSparseTriangleJoin :: Int -> IVec R

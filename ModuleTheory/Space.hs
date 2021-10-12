@@ -14,9 +14,9 @@ data Space :: Type where
     -- | Scalars.
     R :: Space
     -- | Copower.
-    Copow :: Type -> Space -> Space
+    (:=>) :: Type -> Space -> Space
     -- | Compact copower.
-    CCopow :: Type -> Space -> Space
+    (:=>*) :: Type -> Space -> Space
     -- | Power.
     Pow :: Type -> Space -> Space
     -- | Direct sum.
@@ -31,11 +31,12 @@ data Space :: Type where
 infixr 6 :+:
 infixr 7 :*:
 infixr 1 :->
+infixr 2 :=>
 
 -- | A free module over 'b' is just a copower of 'b' copies of 'R'.
-type Free b = Copow b R
+type Free b = b :=> R
 -- | A compact free module over 'b' is just a compact copower of 'b' copies of 'R'.
-type CFree b = CCopow b R
+type CFree b = b :=>* R
 -- | A cofree module over 'b' is just a power of 'b' copies of 'R'.
 type Cofree b = Pow b R
 -- | The dual of a module consists of scalar valued maps out of the module.
