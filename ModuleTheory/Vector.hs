@@ -5,6 +5,7 @@ module ModuleTheory.Vector (
         Gen(..),
         zero,
         (.+.),
+        (.-.),
         (*.),
         (.*),
         (.*.),
@@ -22,19 +23,20 @@ module ModuleTheory.Vector (
         mapTensor,
         powExt,
         appPow,
-        single,
         mapCopow,
         hmapCopow,
         copowExt,
         sum,
         weight,
         freeExt,
+        mapFree,
         collect,
         collect2,
         collect3,
         collect4,
         collect5,
         collect6,
+        Based(..),
         FirstOrder(..),
         cinj,
         csingle,
@@ -76,6 +78,8 @@ newtype instance Gen r ((b, c) :=> v) = CopowProd (Vec r (b :=> c :=> v))
 
 data instance Gen r ([b] :=> v) = CopowPoly (Vec r v) (Vec r (b :=> [b] :=> v))
 
+newtype instance Gen r (Vec s u :=> v) = CopowVec (Vec r ([(Basis u, s)] :=> v))
+
 data instance Gen r (b :=>* v) = AdjoinUnit (Vec r v) (Vec r (b :=> v))
 
 newtype instance Gen r (Pow b v) = PowExt { fromPow :: b -> Vec r v }
@@ -97,6 +101,11 @@ x .+. Zero = x
 x .+. y = Add x y
 
 infixl 7 .+.
+
+(.-.) :: (Ring r) => Vec r v -> Vec r v -> Vec r v
+x .-. y = x .+. (-1) *. y
+
+infix 7 .-.
 
 (*.) :: r -> Vec r v -> Vec r v
 _ *. Zero = Zero
@@ -195,6 +204,25 @@ appPow (Add x y) = \a -> Add (appPow x a) (appPow y a)
 appPow (Mul r x) = \a -> Mul r (appPow x a)
 appPow (Gen x) = fromPow x
 
+class (FirstOrder (Basis u)) => Based u where
+    type Basis u :: Type
+    single :: (Ring r) => Basis u -> Vec r u
+    toList :: (Ring r) => Vec r u -> [(Basis u, r)]
+
+fromList :: (Ring r, Based u) => [(Basis u, r)] -> Vec r u
+fromList = sumList . map (\(b, r) -> r *. single b)
+
+instance Based R where
+    type Basis R = ()
+    single () = Gen One
+    toList Zero = []
+    toList r = [((), getScalar r)]
+
+instance (FirstOrder b) => Based (Free b) where
+    type Basis (Free b) = b
+    single x = inj x (Gen One)
+    toList = map (\(b, r) -> (b, getScalar r)) . decomposeCopow
+
 -- | A type is first-order if it can be used efficiently as the index of a copower. 
 class Eq b => FirstOrder b where
     -- | Singleton mapping.
@@ -207,9 +235,6 @@ class Eq b => FirstOrder b where
     intersectCopow :: (Ring r) => (b -> Vec r u -> Vec r v -> Vec r w) -> Vec r (b :=> u) -> Vec r (b :=> v) -> Vec r (b :=> w)
     -- | Compute a list of mappings contained in a copower.
     decomposeCopow :: (Ring r) => Vec r (b :=> v) -> [(b, Vec r v)]
-
-single :: (FirstOrder b) => b -> Vec r (Free b)
-single b = inj b (Gen One)
 
 -- | Transform a copower by specifying what happens to 'inj b v'.
 mapCopow :: (Ring r, FirstOrder b) => (b -> Vec r u -> Vec r v) -> Vec r (b :=> u) -> Vec r (b :=> v)
@@ -230,6 +255,9 @@ weight = getScalar . sum
 
 freeExt :: (Ring r, FirstOrder b) => (b -> Vec r v) -> Vec r (Free b) -> Vec r v
 freeExt f = copowExt (\b r -> getScalar r *. f b)
+
+mapFree :: (Ring r, FirstOrder b, FirstOrder c) => (b -> c) -> Vec r (Free b) -> Vec r (Free c)
+mapFree f = freeExt $ \b -> inj (f b) (Gen One)
 
 -- | Sum of the mappings contained in a copower.
 collect :: (Ring r, FirstOrder b)
@@ -357,6 +385,32 @@ instance (FirstOrder b) => FirstOrder [b] where
         where
             (x0, xs) = partitionCopowList x
 
+instance (Ring r, Based u) => Eq (Vec r u) where
+    u == v = toList u == toList v
+
+canonicalCopowVec :: Vec r (Vec s u :=> v) -> Gen r (Vec s u :=> v)
+canonicalCopowVec Zero = CopowVec Zero
+canonicalCopowVec (Add x y) = CopowVec (x' .+. y')
+    where
+        CopowVec x' = canonicalCopowVec x
+        CopowVec y' = canonicalCopowVec y
+canonicalCopowVec (Mul r x) = CopowVec (r *. x')
+    where
+        CopowVec x' = canonicalCopowVec x
+canonicalCopowVec (Gen x) = x
+
+instance (Ring r, FirstOrder r, Based u) => FirstOrder (Vec r u) where
+    inj u x = Gen . CopowVec $ inj (toList u) x
+    mapCopowGen f (CopowVec x) = Gen . CopowVec $ mapCopow (f . fromList) x
+    collectGen (CopowVec x) = collect x
+    intersectCopow f x y = Gen . CopowVec $ intersectCopow (f . fromList) x' y'
+        where
+            CopowVec x' = canonicalCopowVec x
+            CopowVec y' = canonicalCopowVec y
+    decomposeCopow x = map (\(us, v) -> (fromList us, v)) (decomposeCopow x')
+        where
+            CopowVec x' = canonicalCopowVec x
+
 cinj :: (FirstOrder b) => b -> Vec r v -> Vec r (b :=>* v)
 cinj x v = Gen $ AdjoinUnit zero (inj x v)
 
@@ -381,12 +435,6 @@ decomposeCCopow (Mul r x) = AdjoinUnit (r *. xUnit) (r *. xVal)
     where
         AdjoinUnit xUnit xVal = decomposeCCopow x
 decomposeCCopow (Gen x) = x
-
-instance (Ring r) => Eq (Vec r R) where
-    a == b = getScalar a == getScalar b
-
-instance (Ring r, FirstOrder b, Eq (Vec r v)) => Eq (Vec r (b :=> v)) where
-    a == b = decomposeCopow a == decomposeCopow b
 
 class ShowVec (v :: Space) where
     showsVec :: (Show r, Ring r) => Vec r v -> ShowS
