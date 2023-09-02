@@ -13,7 +13,7 @@ maintainer:          mkm@di.ku.dk
 build-type:          Simple
 
 library
-  build-depends:     base >=4.14 && <4.15,
+  build-depends:     base >=4.14,
                      containers >=0.6 && <0.7,
                      deepseq >=1.4 && <1.5
   default-language:  Haskell2010
@@ -24,5 +24,4 @@ library
                      ModuleTheory.Intersect,
                      ModuleTheory.Example,
                      ModuleTheory.Polyset,
-                     ModuleTheory.Set,
-                     ESOP
+                     ModuleTheory.Set
